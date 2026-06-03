@@ -79,9 +79,9 @@
             border-radius: 8px;
             padding: 20px;
             font-family: 'Courier New', Courier, monospace;
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.0;
-            letter-spacing: 0.2px;
+            letter-spacing: -0.5px;
             overflow: auto;
             white-space: pre;
             box-sizing: border-box;
@@ -115,11 +115,11 @@
     <div class="input-group">
         <input type="text" id="textInput" placeholder="영어 또는 한국어를 입력하세요..." value="안녕">
     </div>
-    <div class="status" id="statusMessage">● 스무딩 벡터 알고리즘 적용 완료</div>
+    <div class="status" id="statusMessage">● 대기 시간 없음 (로컬 벡터 모드 작동 중)</div>
 
     <div id="output"></div>
     
-    <button class="btn-copy" onclick="copyToClipboard()">아스크 아트 복사하기</button>
+    <button class="btn-copy" onclick="copyToClipboard()">아스키 아트 복사하기</button>
 </div>
 
 <canvas id="analysisCanvas" style="display:none;"></canvas>
@@ -130,91 +130,85 @@
     const canvas = document.getElementById('analysisCanvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    function generateSmoothOutline() {
+    function generateOutline() {
         const text = textInput.value;
         if (!text) {
             output.textContent = "";
             return;
         }
 
-        // 선을 더 굵고 뚜렷하게 잡기 위해 고정 두께 스타일의 고딕 계열 선언
-        const fontHeight = 70; 
-        ctx.font = `bold ${fontHeight}px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
+        // 1. 가상 고해상도 캔버스에 폰트 그리기 (CORS가 전혀 없는 순수 브라우저 내장 폰트 사용)
+        const fontHeight = 60; 
+        ctx.font = `bold ${fontHeight}px 'Arial', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
         
         const metrics = ctx.measureText(text);
-        const textWidth = Math.ceil(metrics.width) + 40;
-        const textHeight = Math.ceil(fontHeight * 1.6);
+        const textWidth = Math.ceil(metrics.width) + 30;
+        const textHeight = Math.ceil(fontHeight * 1.5);
 
         canvas.width = textWidth;
         canvas.height = textHeight;
 
+        // 배경은 검은색, 글자는 흰색으로 그려서 마스크 데이터 생성
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, textWidth, textHeight);
         ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${fontHeight}px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
+        ctx.font = `bold ${fontHeight}px 'Arial', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
         ctx.textBaseline = 'middle';
-        ctx.fillText(text, 20, textHeight / 2);
+        ctx.fillText(text, 15, textHeight / 2);
 
+        // 2. 픽셀 버퍼 읽기
         const imgData = ctx.getImageData(0, 0, textWidth, textHeight);
         const data = imgData.data;
 
-        // 투명도/밝기 판별 헬퍼
-        const getPixel = (x, y) => {
-            if (x < 0 || x >= textWidth || y < 0 || y >= textHeight) return 0;
-            return data[(Math.floor(y) * textWidth + Math.floor(x)) * 4]; 
+        // 특정 좌표가 글자 내부(흰색)인지 판별하는 헬퍼 함수
+        const isFilled = (x, y) => {
+            if (x < 0 || x >= textWidth || y < 0 || y >= textHeight) return false;
+            return data[(y * textWidth + x) * 4] > 128; // R 채널 값 기준
         };
 
         let result = "";
         
-        // 피글렛 폰트 비율과 선 연결성을 위한 해상도 최적화 스텝
-        const stepX = 2.4; 
-        const stepY = 5.0; 
+        // 3. 자음/모음 외곽 테두리를 추적하며 \, /, |, _ 조합 배치
+        // 비율 보정을 위해 스텝을 세로(y)와 가로(x)를 다르게 설정
+        const stepX = 3; 
+        const stepY = 6; 
 
-        for (let y = stepY; y < textHeight - stepY; y += stepY) {
+        for (let y = 0; y < textHeight; y += stepY) {
             let row = "";
-            for (let x = stepX; x < textWidth - stepX; x += stepX) {
+            for (let x = 0; x < textWidth; x += stepX) {
                 
-                const center = getPixel(x, y) > 128;
+                if (isFilled(x, y)) {
+                    // 현재 픽셀이 글자 안쪽일 때 주변 상하좌우를 검사하여 '경계선' 영역만 문자로 남김
+                    const up = isFilled(x, y - stepY);
+                    const down = isFilled(x, y + stepY);
+                    const left = isFilled(x - stepX, y);
+                    const right = isFilled(x + stepX, y);
 
-                if (center) {
-                    // 주변 4방향 경계선 체크
-                    const u = getPixel(x, y - stepY) > 128;
-                    const d = getPixel(x, y + stepY) > 128;
-                    const l = getPixel(x - stepX, y) > 128;
-                    const r = getPixel(x + stepX, y) > 128;
-
-                    // 내부 픽셀은 과감하게 비워서 빈 곽 구현
-                    if (u && d && l && r) {
+                    // 글자 완전 내부 영역이면 공백 처리하여 안을 비워둠 (Figlet 스타일의 핵심)
+                    if (up && down && left && right) {
                         row += " ";
                         continue;
                     }
 
-                    // 대각선 성분 분석을 통해 부드러운 연결 문자 할당
-                    const ul = getPixel(x - stepX, y - stepY) > 128;
-                    const ur = getPixel(x + stepX, y - stepY) > 128;
-                    const dl = getPixel(x - stepX, y + stepY) > 128;
-                    const dr = getPixel(x + stepX, y + stepY) > 128;
-
-                    // 모퉁이 흐름 및 경계선 기울기 판정 로직 개선
-                    if (!u && !l) row += "/";
-                    else if (!u && !r) row += "\\";
-                    else if (!d && !l) row += "\\";
-                    else if (!d && !r) row += "/";
-                    else if (l && r && !u) row += "_";
-                    else if (l && r && !d) row += "_";
-                    else if (u && d && !l) row += "|";
-                    else if (u && d && !r) row += "|";
-                    else if (!ul || !dr) row += "\\";
-                    else if (!ur || !dl) row += "/";
-                    else row += "|";
+                    // 외곽 경계선의 기울기와 위치에 따라 매핑
+                    if (!up && !left) row += "/";
+                    else if (!up && !right) row += "\\";
+                    else if (!down && !left) row += "\\";
+                    else if (!down && !right) row += "/";
+                    else if (!up) row += "_";
+                    else if (!down) row += "_";
+                    else if (!left || !right) row += "|";
+                    else row += "#";
                 } else {
-                    // 바깥 영역 보정 (윗라인이 글자 내부인 경우 밑줄로 하단 경계면 마감)
-                    const u = getPixel(x, y - stepY) > 128;
-                    const d = getPixel(x, y + stepY) > 128;
-                    if (u && !d) {
-                        row += "_";
+                    // 글자 바깥 영역이지만 윗라인이 뚫려있고 아래가 채워져 있으면 천장 문자 보정
+                    const down = isFilled(x, y + stepY);
+                    const downLeft = isFilled(x - stepX, y + stepY);
+                    const downRight = isFilled(x + stepX, y + stepY);
+                    
+                    if (down && !isFilled(x, y - stepY)) {
+                         row += "_";
                     } else {
-                        row += " ";
+                         row += " ";
                     }
                 }
             }
@@ -226,13 +220,15 @@
         output.textContent = result;
     }
 
-    textInput.addEventListener('input', generateSmoothOutline);
-    window.addEventListener('load', generateSmoothOutline);
+    // 실시간 이벤트 바인딩
+    textInput.addEventListener('input', generateOutline);
+    window.addEventListener('load', generateOutline);
 
+    // 복사 기능
     function copyToClipboard() {
         const text = output.textContent;
         navigator.clipboard.writeText(text).then(() => {
-            alert('자연스러운 외곽선 아스키 아트가 복사되었습니다!');
+            alert('외곽선 아스키 아트가 클립보드에 복사되었습니다!');
         }).catch(err => {
             alert('복사 실패: ', err);
         });
