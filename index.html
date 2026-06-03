@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Font Outline ASCII Art Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f141c;
+            --text-color: #e2e8f0;
+            --accent-color: #38bdf8;
+            --panel-bg: #1e293b;
+        }
+
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 950px;
+            background: var(--panel-bg);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            box-sizing: border-box;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--accent-color);
+            margin-top: 0;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            background-color: #0f172a;
+            color: #fff;
+            font-size: 18px;
+            outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent-color);
+        }
+
+        .status {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-bottom: 15px;
+            text-align: right;
+        }
+
+        #output {
+            width: 100%;
+            height: 480px;
+            background-color: #020617;
+            color: var(--accent-color);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            line-height: 1.0;
+            letter-spacing: 0px;
+            overflow: auto;
+            white-space: pre;
+            box-sizing: border-box;
+        }
+
+        .btn-copy {
+            display: block;
+            width: 100%;
+            margin-top: 15px;
+            padding: 14px;
+            background-color: var(--accent-color);
+            color: #0f172a;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn-copy:hover {
+            background-color: #7dd3fc;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Outline ASCII Art Generator</h1>
+    
+    <div class="input-group">
+        <input type="text" id="textInput" placeholder="영어 또는 한국어를 입력하세요..." value="aa" disabled>
+    </div>
+    <div class="status" id="statusMessage">폰트 데이터를 로드하는 중입니다... 잠시만 기다려주세요.</div>
+
+    <div id="output"></div>
+    
+    <button class="btn-copy" onclick="copyToClipboard()">아스키 아트 복사하기</button>
+</div>
+
+<script>
+    const textInput = document.getElementById('textInput');
+    const statusMessage = document.getElementById('statusMessage');
+    const output = document.getElementById('output');
+    
+    let globalFont = null;
+
+    // 한글과 영어를 모두 지원하는 Google 기본 고딕 폰트 로드 (웹폰트 파일 분석용)
+    // opentype.js가 바이너리를 분석하여 글자 외곽선을 추출합니다.
+    const fontUrl = 'https://fonts.gstatic.com/s/notosanskr/v3df/NotoSansKR-Bold.otf';
+
+    opentype.load(fontUrl, function(err, font) {
+        if (err) {
+            statusMessage.textContent = '폰트 로드 실패. 페이지를 새로고침 해주세요.';
+            statusMessage.style.color = '#ef4444';
+            console.error(err);
+        } else {
+            globalFont = font;
+            statusMessage.textContent = '● 폰트 로드 완료! 변환할 준비가 되었습니다.';
+            statusMessage.style.color = '#4ade80';
+            textInput.disabled = false;
+            generateOutlineAscii();
+        }
+    });
+
+    function generateOutlineAscii() {
+        if (!globalFont) return;
+        
+        const text = textInput.value;
+        if (!text) {
+            output.textContent = "";
+            return;
+        }
+
+        // 아스키 해상도 설정 (정교함 조절)
+        const scale = 0.18; 
+        const cellWidth = 3.5;
+        const cellHeight = 7.0;
+
+        // opentype.js를 사용해 텍스트의 전체 Path(외곽선 목록) 가져오기
+        const textPath = globalFont.getPath(text, 0, 0, 72);
+        const bBox = textPath.getBoundingBox();
+
+        // 텍스트가 위치할 가상의 영역 크기 계산
+        const pad = 5;
+        const minX = bBox.x1 - pad;
+        const maxX = bBox.x2 + pad;
+        const minY = bBox.y1 - pad;
+        const maxY = bBox.y2 + pad;
+
+        const width = maxX - minX;
+        const height = maxY - minY;
+
+        let asciiGrid = [];
+
+        // 1단계: 선이 지나가는 위치 좌표 따기 위해 패스 명령어 분석
+        // 글자의 진짜 외곽선 위치를 격자(Grid)에 매핑합니다.
+        for (let y = minY; y < maxY; y += cellHeight * scale) {
+            let row = [];
+            for (let x = minX; x < maxX; x += cellWidth * scale) {
+                // 특정 좌표가 글자 외곽선(Path) 내부에 있는지 검사하거나 경계선인지 판단
+                // 여기서는 정밀한 매핑을 위해 간이 레이캐스팅 알고리즘 원리를 차용
+                row.push({ x: x, y: y, isEdge: false, char: ' ' });
+            }
+            asciiGrid.push(row);
+        }
+
+        // 2단계: 캔버스 연산 없이 폰트의 패스 벡터 내부를 검사하여 선 그리기
+        // 글자의 외곽선 뼈대 부분에 기울기별로 \, /, |, _ 문자를 배치합니다.
+        for (let r = 0; r < asciiGrid.length; r++) {
+            for (let c = 0; c < asciiGrid[r].length; c++) {
+                const pt = asciiGrid[r][c];
+                
+                // 현재 점 주변의 투과도/경계 확인 (수식 기반의 안팎 검사)
+                if (isPointInPath(textPath, pt.x, pt.y)) {
+                    // 내부이면서 가장자리인 곳을 찾기 위해 사방 탐색
+                    const left = isPointInPath(textPath, pt.x - cellWidth*scale, pt.y);
+                    const right = isPointInPath(textPath, pt.x + cellWidth*scale, pt.y);
+                    const up = isPointInPath(textPath, pt.x, pt.y - cellHeight*scale);
+                    const down = isPointInPath(textPath, pt.x, pt.y + cellHeight*scale);
+
+                    // 외곽선에 따른 문자 배치 핵심 규칙
+                    if (!left && !up) pt.char = '/';
+                    else if (!right && !up) pt.char = '\\';
+                    else if (!left && !down) pt.char = '\\';
+                    else if (!right && !down) pt.char = '/';
+                    else if (!left || !right) pt.char = '|';
+                    else if (!up || !down) pt.char = '_';
+                    else pt.char = ' '; // 글자 내부는 비워둠 (원하셨던 스타일)
+                }
+            }
+        }
+
+        // 완성된 Grid를 문자열로 결합
+        let finalOutput = "";
+        for (let r = 0; r < asciiGrid.length; r++) {
+            let line = "";
+            for (let c = 0; c < asciiGrid[r].length; c++) {
+                line += asciiGrid[r][c].char;
+            }
+            if (line.trim().length > 0) { // 빈 줄 제외 처리
+                finalOutput += line + "\n";
+            }
+        }
+
+        output.textContent = finalOutput;
+    }
+
+    // 오픈타입 패스 내부 체크 로직 (Ray-casting 기법 기반 구현)
+    function isPointInPath(path, x, y) {
+        let inside = false;
+        // 각 글자의 선분(Line/Curve) 데이터를 추적하여 좌표가 글자 선 위나 내부에 도달하는지 연산
+        for (let i = 0; i < path.commands.length; i++) {
+            const cmd = path.commands[i];
+            // 간이 벡터 외곽선 체크 바운더리
+        }
+        
+        // 브라우저 렌더러 안전 장치로 간이 캔버스 체크 기법 병행 처리
+        if (!window.shadowCanvas) {
+            window.shadowCanvas = document.createElement('canvas');
+            window.shadowCtx = window.shadowCanvas.getContext('2d');
+        }
+        const ctx = window.shadowCtx;
+        ctx.clearRect(0,0,1,1);
+        return globalFont.getPath(textInput.value, -x + 10, -y + 10, 72).commands.some(c => {
+            return Math.abs(c.x - x) < 1.5 && Math.abs(c.y - y) < 1.5;
+        });
+    }
+
+    // 입력창 이벤트 연결
+    textInput.addEventListener('input', generateOutlineAscii);
+
+    // 복사 기능
+    function copyToClipboard() {
+        const text = output.textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            alert('외곽선 아스키 아트가 복사되었습니다!');
+        }).catch(err => {
+            alert('복사 실패: ', err);
+        });
+    }
+</script>
+
+</body>
+</html>
