@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Hollow Block ASCII Generator</title>
+    <title>3D Shaded Block ASCII Generator</title>
     <style>
         :root {
             --bg-color: #0f141c;
@@ -72,7 +72,7 @@
             border-radius: 8px;
             padding: 20px;
             font-family: 'Courier New', Courier, monospace;
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.0;
             letter-spacing: 0px;
             overflow: auto;
@@ -103,7 +103,7 @@
 <body>
 
 <div class="container">
-    <h1>3D Hollow Block ASCII Generator</h1>
+    <h1>3D Shaded Block ASCII Generator</h1>
     
     <div class="input-group">
         <input type="text" id="textInput" placeholder="영어 또는 한국어를 입력하세요..." value="안녕">
@@ -122,20 +122,20 @@
     const canvas = document.getElementById('analysisCanvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    function generateHollow3D() {
+    function generateShaded3D() {
         const text = textInput.value;
         if (!text) {
             output.textContent = "";
             return;
         }
 
-        // 고정 굵기의 폰트 설정
-        const fontHeight = 54; 
+        // 각진 모양을 예쁘게 뽑아내기 위해 굵은 폰트 지정
+        const fontHeight = 56; 
         ctx.font = `bold ${fontHeight}px 'Arial', 'Malgun Gothic', sans-serif`;
         
         const metrics = ctx.measureText(text);
-        const textWidth = Math.ceil(metrics.width) + 60;
-        const textHeight = Math.ceil(fontHeight * 1.8);
+        const textWidth = Math.ceil(metrics.width) + 70;
+        const textHeight = Math.ceil(fontHeight * 1.9);
 
         canvas.width = textWidth;
         canvas.height = textHeight;
@@ -145,31 +145,21 @@
         ctx.fillStyle = '#ffffff';
         ctx.font = `bold ${fontHeight}px 'Arial', 'Malgun Gothic', sans-serif`;
         ctx.textBaseline = 'middle';
-        ctx.fillText(text, 15, textHeight / 2 - 10);
+        ctx.fillText(text, 15, textHeight / 2 - 15);
 
         const imgData = ctx.getImageData(0, 0, textWidth, textHeight);
         const data = imgData.data;
 
-        // 원본 글자 마스크 판별 함수
+        // 원본 폰트 위치 판별 (이진화 마스크)
         const isFilled = (x, y) => {
             if (x < 0 || x >= textWidth || y < 0 || y >= textHeight) return false;
-            return data[(Math.floor(y) * textWidth + Math.floor(x)) * 4] > 150; 
-        };
-
-        // 특정 좌표가 원본 글자의 '외곽 테두리선'에 해당하는지 체크
-        const isEdge = (x, y) => {
-            if (!isFilled(x, y)) return false;
-            const u = isFilled(x, y - stepY);
-            const d = isFilled(x, y + stepY);
-            const l = isFilled(x - stepX, y);
-            const r = isFilled(x + stepX, y);
-            return !(u && d && l && r); // 상하좌우가 다 채워져 있다면 내부(False), 하나라도 비었으면 테두리(True)
+            return data[(Math.floor(y) * textWidth + Math.floor(x)) * 4] > 140; 
         };
 
         let result = "";
-        const stepX = 2.2; 
-        const stepY = 4.4; 
-        const depth = 5; // 입체 기둥의 길이 (두께)
+        const stepX = 2.0; 
+        const stepY = 4.0; 
+        const depth = 6; // 우하단으로 이어질 3D 입체면 두께 강도
 
         for (let y = 0; y < textHeight; y += stepY) {
             let row = "";
@@ -177,20 +167,20 @@
                 
                 const currentFilled = isFilled(x, y);
 
-                // 1. 전면부(가장 앞 표면) 처리
+                // 1. 글자의 정면(앞표면) 영역 처리
                 if (currentFilled) {
                     const u = isFilled(x, y - stepY);
                     const d = isFilled(x, y + stepY);
                     const l = isFilled(x - stepX, y);
                     const r = isFilled(x + stepX, y);
 
-                    // 글자 전면의 완전 내부 영역은 속을 하얗게 비워둡니다 (핵심 요구사항)
+                    // 글자 전면의 완전 안쪽 영역은 무조건 공백(' ') 처리하여 깨끗하게 비워둠
                     if (u && d && l && r) {
                         row += " ";
                         continue;
                     }
 
-                    // 전면부의 테두리 윤곽선 그리기
+                    // 전면부 윤곽 테두리 마감선 설정
                     if (!u && !l) row += "/";
                     else if (!u && !r) row += "\\";
                     else if (!d && !l) row += "\\";
@@ -201,29 +191,35 @@
                     continue;
                 }
 
-                // 2. 글자 바깥(배경) 영역: 입체 기둥면 추적
-                let drawChar = " ";
+                // 2. 글자 바깥 영역: 우하단 깊이(Depth) 역추적을 통한 입체 빗금 벽면 형성
+                let is3DWall = false;
+                let is3DEdge = false;
                 
                 for (let d = 1; d <= depth; d++) {
                     const checkX = x - (d * stepX);
-                    const checkY = y - (d * stepY * 0.5); // 우하단 사선 투영 각도
+                    const checkY = y - (d * stepY * 0.5); // 사선 왜곡 비율 매칭
                     
-                    // 역추적한 위치가 원본 글자의 '테두리선'인 경우에만 3D 입체선 연결
-                    if (isEdge(checkX, checkY)) {
+                    if (isFilled(checkX, checkY)) {
+                        is3DWall = true;
                         if (d === depth) {
-                            // 3D 블록의 가장 맨 뒷면(바닥 마감선)
-                            const uSpace = !isFilled(x, y - stepY);
-                            drawChar = uSpace ? "_" : "\\";
-                        } else {
-                            // 앞면과 뒷면을 이어주는 사선 테두리 기둥 (내부는 비우고 테두리 축만 남김)
-                            // 모서리 꺾임 연결 부위를 매끄럽게 연결하기 위해 사선 배치
-                            drawChar = "\\";
+                            is3DEdge = true; // 맨 마지막 3D 바닥면 경계
                         }
                         break;
                     }
                 }
 
-                row += drawChar;
+                if (is3DWall) {
+                    if (is3DEdge) {
+                        // 3D 블록이 끝나는 맨 밑바닥 경계선 깔끔하게 마감
+                        const uSpace = !isFilled(x, y - stepY);
+                        row += uSpace ? "_" : "\\";
+                    } else {
+                        // 예시 텍스트와 동일하게 3D 입체 기둥 내부를 사선('\')으로 가득 채움
+                        row += "\\";
+                    }
+                } else {
+                    row += " ";
+                }
             }
             if (row.trim().length > 0) {
                 result += row + "\n";
@@ -233,13 +229,13 @@
         output.textContent = result;
     }
 
-    textInput.addEventListener('input', generateHollow3D);
-    window.addEventListener('load', generateHollow3D);
+    textInput.addEventListener('input', generateShaded3D);
+    window.addEventListener('load', generateShaded3D);
 
     function copyToClipboard() {
         const text = output.textContent;
         navigator.clipboard.writeText(text).then(() => {
-            alert('속이 빈 3D 블록 아스키 아트가 복사되었습니다!');
+            alert('입체 사선이 적용된 아스키 아트가 복사되었습니다!');
         }).catch(err => {
             alert('복사 실패: ', err);
         });
