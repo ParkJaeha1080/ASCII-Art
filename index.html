@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Outline ASCII Art Generator</title>
+    <title>3D Pop-out ASCII Art Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/figlet.js/1.6.0/figlet.min.js"></script>
     <style>
         :root {
-            --bg-color: #0f141c;
-            --text-color: #e2e8f0;
+            --bg-color: #0b0f19;
+            --text-color: #f1f5f9;
             --accent-color: #38bdf8;
             --panel-bg: #1e293b;
         }
@@ -30,7 +31,7 @@
             background: var(--panel-bg);
             padding: 25px;
             border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
             box-sizing: border-box;
         }
 
@@ -40,20 +41,22 @@
             margin-top: 0;
             font-size: 1.8rem;
             margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .input-group {
-            margin-bottom: 15px;
+            margin-bottom: 20px;
         }
 
         input[type="text"] {
             width: 100%;
-            padding: 14px;
+            padding: 16px;
             border: 2px solid #334155;
             border-radius: 8px;
-            background-color: #0f172a;
+            background-color: #020617;
             color: #fff;
-            font-size: 18px;
+            font-size: 20px;
             outline: none;
             box-sizing: border-box;
             transition: border-color 0.3s;
@@ -63,28 +66,22 @@
             border-color: var(--accent-color);
         }
 
-        .status {
-            font-size: 13px;
-            color: #4ade80;
-            margin-bottom: 15px;
-            text-align: right;
-        }
-
         #output {
             width: 100%;
-            height: 480px;
+            height: 500px;
             background-color: #020617;
             color: var(--accent-color);
-            border: 1px solid #334155;
+            border: 2px solid #1e293b;
             border-radius: 8px;
-            padding: 20px;
+            padding: 25px;
             font-family: 'Courier New', Courier, monospace;
-            font-size: 10px;
+            font-size: 11px;
             line-height: 1.0;
-            letter-spacing: -0.5px;
+            letter-spacing: 0px;
             overflow: auto;
             white-space: pre;
             box-sizing: border-box;
+            box-shadow: inset 0 4px 12px rgba(0,0,0,0.8);
         }
 
         .btn-copy {
@@ -93,122 +90,131 @@
             margin-top: 15px;
             padding: 14px;
             background-color: var(--accent-color);
-            color: #0f172a;
+            color: #020617;
             border: none;
             border-radius: 8px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
         }
 
         .btn-copy:hover {
             background-color: #7dd3fc;
+            transform: translateY(-1px);
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Outline ASCII Art Generator</h1>
+    <h1>3D Pop-out ASCII Generator</h1>
     
     <div class="input-group">
-        <input type="text" id="textInput" placeholder="영어 또는 한국어를 입력하세요..." value="안녕">
+        <input type="text" id="textInput" placeholder="영어 또는 한국어를 입력하세요..." value="Hello">
     </div>
-    <div class="status" id="statusMessage">● 대기 시간 없음 (로컬 벡터 모드 작동 중)</div>
 
     <div id="output"></div>
     
     <button class="btn-copy" onclick="copyToClipboard()">아스키 아트 복사하기</button>
 </div>
 
-<canvas id="analysisCanvas" style="display:none;"></canvas>
+<canvas id="renderCanvas" style="display:none;"></canvas>
 
 <script>
     const textInput = document.getElementById('textInput');
     const output = document.getElementById('output');
-    const canvas = document.getElementById('analysisCanvas');
+    const canvas = document.getElementById('renderCanvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    function generateOutline() {
+    function generate3DAscii() {
         const text = textInput.value;
         if (!text) {
             output.textContent = "";
             return;
         }
 
-        // 1. 가상 고해상도 캔버스에 폰트 그리기 (CORS가 전혀 없는 순수 브라우저 내장 폰트 사용)
-        const fontHeight = 60; 
-        ctx.font = `bold ${fontHeight}px 'Arial', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
+        // 영문/숫자 전용: FIGlet의 오리지널 3D 입체 폰트(Slant/Standard) 엔진 구동
+        if (/^[a-zA-Z0-9\s.,!@#$%^&*()_+=\-[\]{}|;':",./<>?`~]+$/.test(text)) {
+            figlet.text(text, {
+                font: 'Slant', // 비스듬하게 툭 튀어나오는 명품 입체 폰트
+                horizontalLayout: 'fitted',
+                verticalLayout: 'default'
+            }, function(err, data) {
+                if (!err) {
+                    output.textContent = data;
+                }
+            });
+            return;
+        }
+
+        // 한글 포함 혼합 텍스트: 고밀도 가상 두께 섀도우 엔진 작동
+        const fontSize = 65;
+        ctx.font = `bold ${fontSize}px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
         
         const metrics = ctx.measureText(text);
-        const textWidth = Math.ceil(metrics.width) + 30;
-        const textHeight = Math.ceil(fontHeight * 1.5);
+        const textWidth = Math.ceil(metrics.width) + 40;
+        const textHeight = Math.ceil(fontSize * 1.6);
 
         canvas.width = textWidth;
         canvas.height = textHeight;
 
-        // 배경은 검은색, 글자는 흰색으로 그려서 마스크 데이터 생성
+        // 캔버스 초기화
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, textWidth, textHeight);
+        
         ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${fontHeight}px 'Arial', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
+        ctx.font = `bold ${fontSize}px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
         ctx.textBaseline = 'middle';
         ctx.fillText(text, 15, textHeight / 2);
 
-        // 2. 픽셀 버퍼 읽기
         const imgData = ctx.getImageData(0, 0, textWidth, textHeight);
         const data = imgData.data;
 
-        // 특정 좌표가 글자 내부(흰색)인지 판별하는 헬퍼 함수
         const isFilled = (x, y) => {
             if (x < 0 || x >= textWidth || y < 0 || y >= textHeight) return false;
-            return data[(y * textWidth + x) * 4] > 128; // R 채널 값 기준
+            return data[(Math.floor(y) * textWidth + Math.floor(x)) * 4] > 140;
         };
 
         let result = "";
-        
-        // 3. 자음/모음 외곽 테두리를 추적하며 \, /, |, _ 조합 배치
-        // 비율 보정을 위해 스텝을 세로(y)와 가로(x)를 다르게 설정
-        const stepX = 3; 
-        const stepY = 6; 
+        const stepX = 2.2; 
+        const stepY = 4.6; 
 
-        for (let y = 0; y < textHeight; y += stepY) {
+        for (let y = stepY; y < textHeight - stepY; y += stepY) {
             let row = "";
-            for (let x = 0; x < textWidth; x += stepX) {
+            for (let x = stepX; x < textWidth - stepX; x += stepX) {
                 
                 if (isFilled(x, y)) {
-                    // 현재 픽셀이 글자 안쪽일 때 주변 상하좌우를 검사하여 '경계선' 영역만 문자로 남김
-                    const up = isFilled(x, y - stepY);
-                    const down = isFilled(x, y + stepY);
-                    const left = isFilled(x - stepX, y);
-                    const right = isFilled(x + stepX, y);
+                    // 입체감을 위해 '윗방향'과 '왼쪽방향' 깊이를 분석
+                    const hasTop = prejudicesCheck(isFilled, x, y, stepX, stepY, 0, -1);
+                    const hasLeft = prejudicesCheck(isFilled, x, y, stepX, stepY, -1, 0);
+                    const hasRight = prejudicesCheck(isFilled, x, y, stepX, stepY, 1, 0);
+                    const hasBottom = prejudicesCheck(isFilled, x, y, stepX, stepY, 0, 1);
 
-                    // 글자 완전 내부 영역이면 공백 처리하여 안을 비워둠 (Figlet 스타일의 핵심)
-                    if (up && down && left && right) {
+                    // 완전히 파묻힌 내부는 비움
+                    if (hasTop && hasLeft && hasRight && hasBottom) {
                         row += " ";
                         continue;
                     }
 
-                    // 외곽 경계선의 기울기와 위치에 따라 매핑
-                    if (!up && !left) row += "/";
-                    else if (!up && !right) row += "\\";
-                    else if (!down && !left) row += "\\";
-                    else if (!down && !right) row += "/";
-                    else if (!up) row += "_";
-                    else if (!down) row += "_";
-                    else if (!left || !right) row += "|";
-                    else row += "#";
+                    // 튀어나온 모서리 두께 마감 처리
+                    if (!hasTop && !hasLeft) row += "/";
+                    else if (!hasTop && !hasRight) row += "\\";
+                    else if (!hasTop) row += "_";
+                    else if (!hasLeft) row += "|";
+                    else if (!hasRight) row += "|";
+                    else row += "/";
                 } else {
-                    // 글자 바깥 영역이지만 윗라인이 뚫려있고 아래가 채워져 있으면 천장 문자 보정
-                    const down = isFilled(x, y + stepY);
-                    const downLeft = isFilled(x - stepX, y + stepY);
-                    const downRight = isFilled(x + stepX, y + stepY);
-                    
-                    if (down && !isFilled(x, y - stepY)) {
-                         row += "_";
+                    // 글자 바깥 영역 중 '그림자가 맺히는 사선 부위'를 추적하여 3D 벽면 생성
+                    const shadowDepth = isFilled(x - stepX, y - stepY); // 대각선 그림자 추적
+                    const directTop = isFilled(x, y - stepY);
+
+                    if (shadowDepth && !directTop) {
+                        row += "\\"; // 툭 튀어나온 글자의 오른쪽 아래 음영 벽면 형성
+                    } else if (directTop) {
+                        row += "_";
                     } else {
-                         row += " ";
+                        row += " ";
                     }
                 }
             }
@@ -216,19 +222,21 @@
                 result += row + "\n";
             }
         }
-
         output.textContent = result;
     }
 
-    // 실시간 이벤트 바인딩
-    textInput.addEventListener('input', generateOutline);
-    window.addEventListener('load', generateOutline);
+    function prejudicesCheck(fn, x, y, sx, sy, dx, dy) {
+        // 단층 검사가 아닌 2단계 깊이 검사로 선 두께 보정
+        return fn(x + sx * dx, y + sy * dy) && fn(x + sx * dx * 2, y + sy * dy * 2);
+    }
 
-    // 복사 기능
+    textInput.addEventListener('input', generate3DAscii);
+    window.addEventListener('load', generate3DAscii);
+
     function copyToClipboard() {
         const text = output.textContent;
         navigator.clipboard.writeText(text).then(() => {
-            alert('외곽선 아스키 아트가 클립보드에 복사되었습니다!');
+            alert('3D 입체 아스키 아트가 클립보드에 복사되었습니다!');
         }).catch(err => {
             alert('복사 실패: ', err);
         });
